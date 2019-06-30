@@ -1,0 +1,59 @@
+Arguments: 
+  /usr/bin/node /usr/bin/yarn
+
+PATH: 
+  ~/.composer/vendor/bin:/home/smartman/.composer/vendor/bin:/home/smartman/bin:/home/smartman/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+
+Yarn version: 
+  1.15.2
+
+Node version: 
+  8.16.0
+
+Platform: 
+  linux ia32
+
+Trace: 
+  Error: EACCES: permission denied, mkdir '/var/www/html/nodeprojects/nodejschat/node_modules/body-parser/node_modules/bytes'
+
+npm manifest: 
+  {
+    "name": "nodejschat",
+    "version": "1.0.0",
+    "description": "Real time chat app with nodejs, express and socketio",
+    "main": "app.js",
+    "scripts": {
+      "start": "node app.js",
+      "dev": "nodemon app.js"
+    },
+    "keywords": [
+      "realtime",
+      "chat",
+      "app",
+      "nodejs",
+      "express",
+      "socketio"
+    ],
+    "author": "Md Jewel Rana",
+    "license": "MIT",
+    "repository": {
+      "type": "git",
+      "url": "git+https://github.com/jewel-rana/nodejs-chat-with-socket.io.git"
+    },
+    "dependencies": {
+      "body-parser": "^1.19.0",
+      "ejs": "^2.6.1",
+      "express": "^4.16.4",
+      "joi": "^14.3.1",
+      "mongoose": "^5.5.3",
+      "mysql": "^2.17.1",
+      "node-static": "^0.7.11",
+      "socket.io": "^2.2.0"
+    }
+  }
+
+yarn manifest: 
+  No manifest
+
+Lockfile: 
+  No lockfile

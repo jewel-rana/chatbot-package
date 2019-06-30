@@ -1,0 +1,34 @@
+{
+  "name": "nodejschat",
+  "version": "1.0.0",
+  "description": "Real time chat app with nodejs, express and socketio",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "keywords": [
+    "realtime",
+    "chat",
+    "app",
+    "nodejs",
+    "express",
+    "socketio"
+  ],
+  "author": "Md Jewel Rana",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jewel-rana/nodejs-chat-with-socket.io.git"
+  },
+  "dependencies": {
+    "body-parser": "^1.19.0",
+    "ejs": "^2.6.2",
+    "express": "^4.17.1",
+    "joi": "^14.3.1",
+    "mongoose": "^5.6.2",
+    "mysql": "^2.17.1",
+    "node-static": "^0.7.11",
+    "socket.io": "^2.2.0"
+  }
+}

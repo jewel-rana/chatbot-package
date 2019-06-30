@@ -1,0 +1,111 @@
+<html>
+    <head>
+        <title>Chat with socket.io and nodejs</title>
+        <style>
+            #nickWrap {
+                width: 500px;
+            }
+            #contentWrap {
+                width:500px;
+                display: none;
+            }
+            #nickError {
+                color:brown;
+            }
+            #messages {
+                height: 500px;
+            }
+        </style>
+    </head>
+    <body>
+
+        <div id="nickWrap">
+            <p>Please enter your name</p>
+            <p id="nickError"></p>
+            <form id="nickForm">
+                <input type="text" id="nickName">
+                <input type="submit" value="Join">
+            </form>
+        </div>
+        <div id="contentWrap">
+
+            <div id="chat">
+                <div id="messages"></div>
+                <form id="send-message">
+                    <input type="text" id="message">
+                    <input type="submit" value="Send">
+                </form>
+            </div>
+            <div id="users"></div>
+        </div>
+        <script src="//code.jquery.com/jquery-latest.min.js"></script>
+        <script src="/socket.io/socket.io.js"></script>
+        <script>
+            jQuery( ($) => {
+                var socket = io.connect();
+                var $contentWrap = $('#contentWrap');
+                var $nickWrap = $('#nickWrap');
+                var $messageForm = $('#send-message');
+                var $messageBox = $('#message');
+                var $users = $('#users');
+                var $chat = $('#chat');
+                var $messages = $('#messages');
+                var $nickForm = $('#nickForm');
+                var $nickName = $('#nickName');
+                var $nickError = $('#nickError');
+
+                $messageForm.submit((e) => {
+                    e.preventDefault();
+                    socket.emit('send message', { name: socket.nickname, msg: $messageBox.val() });
+                    $messageBox.val('');
+
+                    return false;
+                });
+
+                $nickForm.submit((e) => {
+                    e.preventDefault();
+
+                    socket.emit('new user', $nickName.val(), (data) => {
+                        if( data ) {
+                            $contentWrap.show();
+                            $nickWrap.hide();
+                        } else {
+                            $nickError.html('The username already taken! please try another.');
+                        }
+                    });
+
+                    $nickName.val('');
+                    return false;
+                })
+
+                socket.on('new message', (data) => {
+                    $messages.append("<b>" + data.name + "</b> : " + data.msg + "<hr>");
+                });
+
+                socket.on('old messages', (data) => {
+                    console.log( data );
+                    for( var i = data.length - 1; i >= 0; i-- ) {
+                        $messages.append("<b>" + data[i].name + "</b> : " + data[i].message + "<hr>");
+                    }
+                });
+
+                socket.on('users', (nicknames) => {
+                    var html = '';
+                    for( var i = 0; i < nicknames.length; i++) {
+                        html += nicknames[i] + "<br>";
+                    }
+
+                    $users.html( html );
+                });
+
+                socket.on('user join', (nickname) => {
+                    $messages.append("<b>" + nickname + "</b> join the conversation.<hr>");
+                });
+
+                socket.on('user left', (nickname) => {
+                    $messages.append("<b>" + nickname + "</b> has left the conversation.<hr>");
+                });
+            });
+        </script>
+    </body>
+</html>
