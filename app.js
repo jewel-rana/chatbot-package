@@ -134,7 +134,7 @@ io.sockets.on('connection', (socket) => {
             if(err == null ){
                 console.log('new message sent');
                 io.sockets.emit('new_message_' + data.receiver, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
-                socket.emit('new_message_' + socket.user_id, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
+                socket.emit('reply_message_' + data.sender, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
             } else {
                 console.log('new message sent err' + err);
                 socket.emit('bug reporting', err);
