@@ -29,12 +29,13 @@ app.use(bodyParser.urlencoded({
 //data storage
 const nicknames = [];
 const oUsers = [];
+const supportManagers = [];
 
 const mysql = require('mysql');
 
 const con = mysql.createConnection({
     host: 'localhost',
-    user: 'admin',
+    user: 'root',
     password: '123456',
     database: 'mmcm'
 });
@@ -54,6 +55,11 @@ con.connect(function(err) {
 
 io.sockets.on('connection', (socket) => {
     // console.log(io.sockets.sockets);
+
+    //get unaccepted message list for support manager
+    socket.on('get new msg list', (callback) => {
+        getUnAcceptedList(socket, callback);
+    });
 
     //add users
     socket.on('new user', (data, callback) => {
@@ -80,21 +86,54 @@ io.sockets.on('connection', (socket) => {
             socket.nickname = data.name;
             nicknames.push({name: socket.nickname, id: data.id, socket: socket});
 
-            //new user join
-            io.sockets.emit("user join", socket.nickname);
             callback(true);
         }
+        //new user join
+        io.sockets.emit("user join", socket.nickname);
 
-        updateNickenames(socket);
+        socket.emit('online', supportManagers.length);
+
+        // updateNickenames(socket);
     });
 
-    socket.on('send message', (data) => {
+    socket.on('send_message', (data) => {
+        var message = {user_id: socket.user_id, message: data.msg, receiver_id: parseInt(data.receiver)}
+        //save to database
+        con.query('INSERT INTO mmcm_chats SET ?', message, (err, rows) => {
+            if(err == null ){
+                console.log('new message sent 0');
+                io.sockets.emit('new_message_' + message.user_id, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
+                io.sockets.emit('reply_message_' + message.receiver_id, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
+            } else {
+                console.log('new message sent err' + err);
+                socket.emit('bug reporting', err);
+            }
+        });
+    });
+
+    socket.on('send_message_' + socket.user_id, (data) => {
+        console.log(data);
+        var message = {user_id: socket.user_id, message: data.msg, receiver_id: data.receiver}
+        //save to database
+        con.query('INSERT INTO mmcm_chats SET ?', message, (err, rows) => {
+            if(err == null ) {
+                console.log('new message sent');
+                io.sockets.emit('new_message_' + data.receiver, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
+            } else {
+                console.log('new message sent err' + err);
+                socket.emit('bug reporting', err);
+            }
+        });
+    });
+
+    socket.on('reply_message', (data) => {
+        console.log(data);
         var message = {user_id: socket.user_id, message: data.msg, receiver_id: data.receiver}
         //save to database
         con.query('INSERT INTO mmcm_chats SET ?', message, (err, rows) => {
             if(err == null ){
                 console.log('new message sent');
-                io.sockets.emit('new message', {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
+                io.sockets.emit('new_message_' + data.receiver, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
             } else {
                 console.log('new message sent err' + err);
                 socket.emit('bug reporting', err);
@@ -108,7 +147,7 @@ io.sockets.on('connection', (socket) => {
 
         // console.log('Receiver ID : ' + receiver_id + 'Sender : ' + sender_id);
         con.query(
-      "SELECT mmcm_chats.message, mmcm_chats.sending_at, S.username as sender_name, R.username as receiver_name FROM mmcm_chats LEFT JOIN users as S ON mmcm_chats.user_id=S.id LEFT JOIN users R ON mmcm_chats.receiver_id=R.id WHERE mmcm_chats.receiver_id=" + receiver_id + " AND mmcm_chats.user_id="+ sender_id +" OR ( mmcm_chats.receiver_id="+sender_id+" AND mmcm_chats.user_id="+receiver_id+") ORDER BY mmcm_chats.id desc LIMIT 8",
+      "SELECT mmcm_chats.id, mmcm_chats.message, mmcm_chats.sending_at, mmcm_chats.user_id as sender_id, S.username as sender_name, R.username as receiver_name FROM mmcm_chats LEFT JOIN users as S ON mmcm_chats.user_id=S.id LEFT JOIN users R ON mmcm_chats.receiver_id=R.id WHERE mmcm_chats.user_id="+ receiver_id +" OR mmcm_chats.receiver_id="+receiver_id+" ORDER BY mmcm_chats.id desc LIMIT 8",
       (err, rows) => {
         console.log( rows );
             if( err == null ) {
@@ -118,6 +157,10 @@ io.sockets.on('connection', (socket) => {
                 socket.emit('bug reporting', err);
             }
         });
+    });
+
+    socket.on('responded_to_msg', (data) => {
+        console.log(data);
     });
 
     socket.on('disconnect', (data) => {
@@ -135,6 +178,21 @@ io.sockets.on('connection', (socket) => {
         updateNickenames(socket);
     });
 });
+
+function getUnAcceptedList(socket, callback) {
+    con.query(
+      "SELECT mmcm_chats.id, mmcm_chats.message, mmcm_chats.sending_at, mmcm_chats.user_id as sender_id, S.username as sender_name FROM mmcm_chats LEFT JOIN users as S ON mmcm_chats.user_id=S.id WHERE mmcm_chats.receiver_id='0' GROUP BY mmcm_chats.user_id LIMIT 10",
+      (err, rows) => {
+        console.log( rows );
+            if( err == null ) {
+                let data = rows;
+                console.log(data);
+                socket.emit('unaccepted list', data);
+            } else {
+                socket.emit('bug reporting', err);
+            }
+        });
+}
 
 function updateNickenames(socket) {
     const oUsers = [];
