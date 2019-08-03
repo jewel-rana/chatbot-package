@@ -58,7 +58,10 @@ io.sockets.on('connection', (socket) => {
 
     //get unaccepted message list for support manager
     socket.on('get new msg list', (callback) => {
-        getUnAcceptedList(socket, callback);
+            getUnAcceptedList((data) => {
+                io.sockets.emit('unaccepted list', data);
+                callback(data);
+            });
     });
 
     //add users
@@ -97,7 +100,8 @@ io.sockets.on('connection', (socket) => {
     });
 
     socket.on('send_message', (data) => {
-        var message = {user_id: socket.user_id, message: data.msg, receiver_id: parseInt(data.receiver)}
+        var message = {user_id: socket.user_id, message: data.msg, receiver_id: parseInt(data.receiver), status:0}
+        
         //save to database
         con.query('INSERT INTO mmcm_chats SET ?', message, (err, rows) => {
             if(err == null ){
@@ -106,6 +110,27 @@ io.sockets.on('connection', (socket) => {
                 io.sockets.emit('reply_message_' + message.receiver_id, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
             } else {
                 console.log('new message sent err' + err);
+                socket.emit('bug reporting', err);
+            }
+        });
+        if( message.receiver_id == 0 ) {
+            getUnAcceptedList((data) => {
+                io.sockets.emit('unaccepted list', data);
+            });
+        }
+    });
+
+    socket.on('join_chat', (data) => {
+        let id = data.id;
+        let message = {receiver_id: socket.user_id}
+        con.query('UPDATE mmcm_chats SET receiver_id=' + socket.user_id + ' WHERE user_id=' + id + ' AND receiver_id=0', (err, rows) => {
+            if(err == null ) {
+                console.log('Support agent join to chat');
+                getUnAcceptedList((data) => {
+                    io.sockets.emit('unaccepted list', data);
+                });
+            } else {
+                console.log('agent join error - ' + err);
                 socket.emit('bug reporting', err);
             }
         });
@@ -180,7 +205,7 @@ io.sockets.on('connection', (socket) => {
     });
 });
 
-function getUnAcceptedList(socket, callback) {
+function getUnAcceptedList(callback) {
     con.query(
       "SELECT mmcm_chats.id, mmcm_chats.message, mmcm_chats.sending_at, mmcm_chats.user_id as sender_id, S.username as sender_name FROM mmcm_chats LEFT JOIN users as S ON mmcm_chats.user_id=S.id WHERE mmcm_chats.receiver_id='0' GROUP BY mmcm_chats.user_id LIMIT 10",
       (err, rows) => {
@@ -188,9 +213,10 @@ function getUnAcceptedList(socket, callback) {
             if( err == null ) {
                 let data = rows;
                 console.log(data);
-                socket.emit('unaccepted list', data);
+                // socket.emit('unaccepted list', data);
+                callback(data);
             } else {
-                socket.emit('bug reporting', err);
+                // socket.emit('bug reporting', err);
             }
         });
 }
