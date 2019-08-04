@@ -56,47 +56,24 @@ con.connect(function(err) {
 io.sockets.on('connection', (socket) => {
     // console.log(io.sockets.sockets);
 
-    //get unaccepted message list for support manager
-    socket.on('get new msg list', (callback) => {
-            getUnAcceptedList((data) => {
-                io.sockets.emit('unaccepted list', data);
-                callback(data);
-            });
+    socket.emit('need_info', {socket_id: socket.id});
+
+    socket.on('my_info', (info) => {
+        socket.user_id = info.user_id;
+        socket.nickname = info.username;
+        socket.group = info.group;
+        if( info.group == 'user' ) {
+            socket.join('room_' + info.user_id);
+        }
+        console.log(socket);
     });
 
-    //add users
-    socket.on('new user', (data, callback) => {
-        console.log(nicknames.length);
-        var userHas = false;
-        if( nicknames.length > 0 && typeof nicknames !='undefined' ) {
-            for( var i = 0; i < nicknames.length; i++ ) {
-                if( parseInt( nicknames[i].id ) === parseInt(data.id) ){
-                    console.log('testing');
-                    userHas = true;
-                }
-            }
-        }
-
-        console.log(userHas);
-
-        if (userHas == true) {
-            console.log('User already exist' + userHas);
-            socket.user_id = data.id;
-            socket.nickname = data.name;
-            callback(false);
-        } else {
-            socket.user_id = data.id;
-            socket.nickname = data.name;
-            nicknames.push({name: socket.nickname, id: data.id, socket: socket});
-
-            callback(true);
-        }
-        //new user join
-        io.sockets.emit("user join", socket.nickname);
-
-        socket.emit('online', supportManagers.length);
-
-        // updateNickenames(socket);
+    //get unaccepted message list for support manager
+    socket.on('get new msg list', (callback) => {
+        getUnAcceptedList((data) => {
+            io.sockets.sockets['admin'].emit('unaccepted list', data);
+            callback(data);
+        });
     });
 
     socket.on('send_message', (data) => {
@@ -106,8 +83,10 @@ io.sockets.on('connection', (socket) => {
         con.query('INSERT INTO mmcm_chats SET ?', message, (err, rows) => {
             if(err == null ){
                 console.log('new message sent 0');
-                io.sockets.emit('new_message_' + message.user_id, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
-                io.sockets.emit('reply_message_' + message.receiver_id, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
+                const resp = {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id};
+                io.sockets.in('room_' + socket.user_id).emit('chat_message', resp);
+                // io.sockets.emit('new_message_' + message.user_id, resp);
+                // io.sockets.emit('reply_message_' + message.receiver_id, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
             } else {
                 console.log('new message sent err' + err);
                 socket.emit('bug reporting', err);
@@ -120,9 +99,30 @@ io.sockets.on('connection', (socket) => {
         }
     });
 
+    socket.on('reply_message', (data) => {
+        var message = {user_id: socket.user_id, message: data.msg, receiver_id: parseInt(data.receiver)};
+        //save to database
+        con.query('INSERT INTO mmcm_chats SET ?', message, (err, rows) => {
+            if(err == null ){
+                console.log('new message sent 0');
+                const resp = {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id};
+                io.sockets.in('room_' + socket.user_id).emit('chat_message', resp);
+                // io.sockets.emit('new_message_' + message.user_id, resp);
+                // io.sockets.emit('reply_message_' + message.receiver_id, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
+            } else {
+                console.log('new message sent err' + err);
+                socket.emit('bug reporting', err);
+            }
+        });
+        console.log('this is reply message');
+    });
+
     socket.on('join_chat', (data) => {
         let id = data.id;
+        socket.join('room_' + data.id);
+        console.log('agent joind the room');
         let message = {receiver_id: socket.user_id}
+        // io.broadcust.to(io.sockets.sockets[id]).emit('agent_join', {agent_id: socket.user_id, agent_name: socket.nickname});
         con.query('UPDATE mmcm_chats SET receiver_id=' + socket.user_id + ' WHERE user_id=' + id + ' AND receiver_id=0', (err, rows) => {
             if(err == null ) {
                 console.log('Support agent join to chat');
@@ -134,6 +134,10 @@ io.sockets.on('connection', (socket) => {
                 socket.emit('bug reporting', err);
             }
         });
+    });
+
+    socket.on('end_chat', (data) => {
+        // io.sockets.emit('');
     });
 
     socket.on('send_message_' + socket.user_id, (data) => {
@@ -201,7 +205,6 @@ io.sockets.on('connection', (socket) => {
         }
 
         io.sockets.emit('user left', { name: socket.nickname, id: socket.user_id });
-        updateNickenames(socket);
     });
 });
 
@@ -221,15 +224,6 @@ function getUnAcceptedList(callback) {
         });
 }
 
-function updateNickenames(socket) {
-    const oUsers = [];
-    for( var i = 0; i < nicknames.length; i++ ) {
-        oUsers.push( {name: nicknames[i].name, socket_id: nicknames[i].socket.id, user_id: nicknames[i].id } );
-    }
-    // console.log(oUsers);
-    io.sockets.emit('users', oUsers);
-}
-
 function validate(data) {
     const schema = {
         name: Joi.string()
@@ -240,6 +234,12 @@ function validate(data) {
     // console.log(result);
     if (result.error)
         return result.error.details[0].message;
+}
+
+function getSocket( userId ) {
+
+    return io.sockets.sockets[userId];
+    // scht.broadcust.to(sock.socket.id).emit('agent_join', msg);
 }
 
 // function userExist( user_id ){ //q, VARIABLE FROM THE INPUT FIELD
