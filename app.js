@@ -64,16 +64,13 @@ io.sockets.on('connection', (socket) => {
         socket.group = info.group;
         if( info.group == 'user' ) {
             socket.join('room_' + info.user_id);
+            socket.room = 'room_' + info.user_id;
+        } else {
+            getUnAcceptedList((data) => {
+                socket.emit('unaccepted list', data);
+            });
         }
         console.log(socket);
-    });
-
-    //get unaccepted message list for support manager
-    socket.on('get new msg list', (callback) => {
-        getUnAcceptedList((data) => {
-            io.sockets.sockets['admin'].emit('unaccepted list', data);
-            callback(data);
-        });
     });
 
     socket.on('send_message', (data) => {
@@ -106,7 +103,7 @@ io.sockets.on('connection', (socket) => {
             if(err == null ){
                 console.log('new message sent 0');
                 const resp = {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id};
-                io.sockets.in('room_' + socket.user_id).emit('chat_message', resp);
+                io.sockets.in('room_' + data.receiver).emit('chat_message', resp);
                 // io.sockets.emit('new_message_' + message.user_id, resp);
                 // io.sockets.emit('reply_message_' + message.receiver_id, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
             } else {
@@ -120,12 +117,14 @@ io.sockets.on('connection', (socket) => {
     socket.on('join_chat', (data) => {
         let id = data.id;
         socket.join('room_' + data.id);
+        socket.room = 'room_' + data.id;
         console.log('agent joind the room');
         let message = {receiver_id: socket.user_id}
         // io.broadcust.to(io.sockets.sockets[id]).emit('agent_join', {agent_id: socket.user_id, agent_name: socket.nickname});
         con.query('UPDATE mmcm_chats SET receiver_id=' + socket.user_id + ' WHERE user_id=' + id + ' AND receiver_id=0', (err, rows) => {
             if(err == null ) {
                 console.log('Support agent join to chat');
+                io.sockets.in('room_' + data.id).emit('agent_join', {agent_id: socket.user_id, agent_name: socket.nickname});
                 getUnAcceptedList((data) => {
                     io.sockets.emit('unaccepted list', data);
                 });
@@ -148,22 +147,6 @@ io.sockets.on('connection', (socket) => {
             if(err == null ) {
                 console.log('new message sent');
                 io.sockets.emit('new_message_' + data.receiver, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
-            } else {
-                console.log('new message sent err' + err);
-                socket.emit('bug reporting', err);
-            }
-        });
-    });
-
-    socket.on('reply_message', (data) => {
-        console.log(data);
-        var message = {user_id: socket.user_id, message: data.msg, receiver_id: data.receiver}
-        //save to database
-        con.query('INSERT INTO mmcm_chats SET ?', message, (err, rows) => {
-            if(err == null ){
-                console.log('new message sent');
-                io.sockets.emit('new_message_' + data.receiver, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
-                socket.emit('reply_message_' + data.sender, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
             } else {
                 console.log('new message sent err' + err);
                 socket.emit('bug reporting', err);
@@ -198,13 +181,13 @@ io.sockets.on('connection', (socket) => {
         //remove nickname of disconnected user
         // nicknames.delete(nicknames[socket.nickname]);
         // delete nicknames[socket.nickname];
-        for( let i = 0; i < nicknames.length; i++ ) {
-            if( nicknames[i].user_id == socket.user_id){
-                nicknames.splice(i, 1);
-            }
-        }
+        // for( let i = 0; i < nicknames.length; i++ ) {
+        //     if( nicknames[i].user_id == socket.user_id){
+        //         nicknames.splice(i, 1);
+        //     }
+        // }
 
-        io.sockets.emit('user left', { name: socket.nickname, id: socket.user_id });
+        io.sockets.in(socket.room).emit('user_left', { name: socket.nickname, id: socket.user_id });
     });
 });
 
