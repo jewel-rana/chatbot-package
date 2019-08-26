@@ -4,7 +4,7 @@ const app = express();
 const server = require("http").createServer(app);
 const io = require("socket.io").listen(server); //PORT
 const port = process.env.PORT || 4000;
-const hostname = "192.168.0.117";
+const hostname = "192.168.0.105";
 server.listen(port, hostname, () => {
   console.log("Server Running on port " + hostname + ":" + port);
 });
@@ -59,6 +59,7 @@ io.sockets.on('connection', (socket) => {
     socket.emit('need_info', {socket_id: socket.id});
 
     socket.on('my_info', (info) => {
+        console.log(info);
         socket.user_id = info.user_id;
         socket.nickname = info.username;
         socket.group = info.group;
@@ -70,11 +71,13 @@ io.sockets.on('connection', (socket) => {
                 socket.emit('unaccepted list', data);
             });
         }
-        console.log(socket);
+        // console.log(socket);
     });
 
     socket.on('send_message', (data) => {
         var message = {user_id: socket.user_id, message: data.msg, receiver_id: parseInt(data.receiver), status:0}
+
+        // console.log(data);
         
         //save to database
         con.query('INSERT INTO mmcm_chats SET ?', message, (err, rows) => {
@@ -140,7 +143,7 @@ io.sockets.on('connection', (socket) => {
     });
 
     socket.on('send_message_' + socket.user_id, (data) => {
-        console.log(data);
+        // console.log(data);
         var message = {user_id: socket.user_id, message: data.msg, receiver_id: data.receiver}
         //save to database
         con.query('INSERT INTO mmcm_chats SET ?', message, (err, rows) => {
@@ -155,21 +158,8 @@ io.sockets.on('connection', (socket) => {
     });
 
     socket.on('get old messages', (data) => {
-        let receiver_id = socket.user_id;
-        let sender_id = data.id;
 
-        // console.log('Receiver ID : ' + receiver_id + 'Sender : ' + sender_id);
-        con.query(
-      "SELECT mmcm_chats.id, mmcm_chats.message, mmcm_chats.sending_at, mmcm_chats.user_id as sender_id, S.username as sender_name, R.username as receiver_name FROM mmcm_chats LEFT JOIN users as S ON mmcm_chats.user_id=S.id LEFT JOIN users R ON mmcm_chats.receiver_id=R.id WHERE mmcm_chats.user_id="+ receiver_id +" OR mmcm_chats.receiver_id="+receiver_id+" ORDER BY mmcm_chats.id desc LIMIT 8",
-      (err, rows) => {
-        console.log( rows );
-            if( err == null ) {
-                let data = rows;
-                socket.emit("old messages", data);
-            } else {
-                socket.emit('bug reporting', err);
-            }
-        });
+        console.log( socket );
     });
 
     socket.on('responded_to_msg', (data) => {
