@@ -142,7 +142,7 @@ io.sockets.on('connection', (socket) => {
     });
 
     socket.on('end_chat', (data) => {
-        // io.sockets.emit('');
+        io.sockets.in(socket.room).emit('user_left', { status: true, msg: 'Your session has ended with operator.' });
     });
 
     socket.on('send_message_' + socket.user_id, (data) => {
@@ -198,7 +198,7 @@ io.sockets.on('connection', (socket) => {
         //     }
         // }
 
-        io.sockets.in(socket.room).emit('user_left', { name: socket.nickname, id: socket.user_id });
+        io.sockets.in(socket.room).emit('user_left', { status: true, msg: 'Operator has gone offline!' });
     });
 });
 
