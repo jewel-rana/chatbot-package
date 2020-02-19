@@ -3,7 +3,7 @@ const express = require('express');
 const app = express();
 const server = require("http").createServer(app);
 const io = require("socket.io").listen(server); //PORT
-const port = process.env.PORT || 4000;
+const port = 4000;
 const hostname = "192.168.0.125";
 server.listen(port, hostname, () => {
   console.log("Server Running on port " + hostname + ":" + port);
@@ -37,7 +37,7 @@ const con = mysql.createConnection({
     host: 'localhost',
     user: 'root',
     password: '123456',
-    database: 'mmcm'
+    database: 'dpe'
 });
 
 con.connect(function(err) {
@@ -52,7 +52,6 @@ con.connect(function(err) {
 // const webRoutes = require('./routes/web')(app, express);
 // app.use('/api', require('./routes/api'));
 // app.use(webRoutes);
-
 io.sockets.on('connection', (socket) => {
     // console.log(io.sockets.sockets);
 
@@ -122,15 +121,19 @@ io.sockets.on('connection', (socket) => {
 
     socket.on('join_chat', (data) => {
         let id = data.id;
+        var today = new Date();
+        var time = today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();
         socket.join('room_' + data.id);
         socket.room = 'room_' + data.id;
-        console.log('agent joind the room');
         let message = {receiver_id: socket.user_id}
         // io.broadcust.to(io.sockets.sockets[id]).emit('agent_join', {agent_id: socket.user_id, agent_name: socket.nickname});
         con.query('UPDATE mmcm_chats SET receiver_id=' + socket.user_id + ' WHERE user_id=' + id + ' AND receiver_id=0', (err, rows) => {
             if(err == null ) {
                 console.log('Support agent join to chat');
                 io.sockets.in('room_' + data.id).emit('agent_join', {agent_id: socket.user_id, agent_name: socket.nickname, time: rows.sending_at});
+                var msg = 'আপনাকে কিভাবে সহযোগিতা করতে পারি?';
+                const resp = {name: socket.nickname, msg: msg, id: socket.user_id, receiver: socket.user_id, socket_id: socket.id, time:time };
+                io.sockets.in('room_' + data.receiver).emit('chat_message', resp);
                 getUnAcceptedList((data) => {
                     io.sockets.emit('unaccepted list', data);
                 });
@@ -142,7 +145,7 @@ io.sockets.on('connection', (socket) => {
     });
 
     socket.on('end_chat', (data) => {
-        io.sockets.in(socket.room).emit('user_left', { status: true, msg: 'Your session has ended with operator.' });
+        io.sockets.in('room_' + data.id).emit('end_chat', {status: true, msg: 'Your session has ended by operator.'});
     });
 
     socket.on('send_message_' + socket.user_id, (data) => {
@@ -170,7 +173,7 @@ io.sockets.on('connection', (socket) => {
         console.log('Receiver ID : ' + receiver_id + 'Sender : ' + sender_id);
 
         con.query(
-      "SELECT mmcm_chats.id, mmcm_chats.message, mmcm_chats.sending_at, mmcm_chats.user_id as sender_id, S.username as sender_name, R.username as receiver_name FROM mmcm_chats LEFT JOIN users as S ON mmcm_chats.user_id=S.id LEFT JOIN users R ON mmcm_chats.receiver_id=R.id WHERE mmcm_chats.user_id="+ receiver_id +" OR mmcm_chats.receiver_id="+receiver_id+" ORDER BY mmcm_chats.id desc LIMIT 8",
+      "SELECT mmcm_chats.id, mmcm_chats.message, mmcm_chats.sending_at, mmcm_chats.user_id as sender_id, S.name_bn as sender_name, R.name_bn as receiver_name FROM mmcm_chats LEFT JOIN users as S ON mmcm_chats.user_id=S.id LEFT JOIN users R ON mmcm_chats.receiver_id=R.id WHERE mmcm_chats.user_id="+ receiver_id +" OR mmcm_chats.receiver_id="+receiver_id+" ORDER BY mmcm_chats.id desc LIMIT 8",
       (err, rows) => {
         console.log( rows );
             if( err == null ) {
@@ -198,13 +201,13 @@ io.sockets.on('connection', (socket) => {
         //     }
         // }
 
-        io.sockets.in(socket.room).emit('user_left', { status: true, msg: 'Operator has gone offline!' });
+        io.sockets.in(socket.room).emit('user_left', { name: socket.nickname, id: socket.user_id });
     });
 });
 
 function getUnAcceptedList(callback) {
     con.query(
-      "SELECT mmcm_chats.id, mmcm_chats.message, mmcm_chats.sending_at, mmcm_chats.user_id as sender_id, S.username as sender_name FROM mmcm_chats LEFT JOIN users as S ON mmcm_chats.user_id=S.id WHERE mmcm_chats.receiver_id='0' GROUP BY mmcm_chats.user_id LIMIT 10",
+      "SELECT mmcm_chats.id, mmcm_chats.message, mmcm_chats.sending_at, mmcm_chats.user_id as sender_id, S.name_bn as sender_name FROM mmcm_chats LEFT JOIN users as S ON mmcm_chats.user_id=S.id WHERE mmcm_chats.receiver_id='0' GROUP BY mmcm_chats.user_id LIMIT 10",
       (err, rows) => {
         console.log( rows );
             if( err == null ) {
@@ -247,3 +250,4 @@ function getSocket( userId ) {
 //   }
 //   $("#k").html(k); //SHOWS EITHER "TRUE" OF "FALSE"
 // }
+
