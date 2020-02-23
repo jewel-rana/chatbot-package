@@ -32,21 +32,33 @@ const oUsers = [];
 const supportManagers = [];
 
 const mysql = require('mysql');
-
-const con = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '123456',
-    database: 'dpe'
+const con  = mysql.createPool({
+  connectionLimit : 10,
+  host            : 'localhost',
+  user            : 'root',
+  password        : '123456',
+  database        : 'dpe'
 });
-
-con.connect(function(err) {
-  if (err) {
-    console.log('error: ' + err.message);
-  }
+// const con = null;
+// pool.getConnection(function(err, connection) {
  
-  console.log('Connected to the MySQL server.');
-});
+//   console.log('Connected to the MySQL server.');
+//   con = connection;
+// });
+// const con = mysql.createConnection({
+//     host: 'localhost',
+//     user: 'root',
+//     password: '123456',
+//     database: 'dpe'
+// });
+
+// con.connect(function(err) {
+//   if (err) {
+//     console.log('error: ' + err.message);
+//   }
+ 
+//   console.log('Connected to the MySQL server.');
+// });
 
 //routes
 // const webRoutes = require('./routes/web')(app, express);
@@ -58,7 +70,6 @@ io.sockets.on('connection', (socket) => {
     socket.emit('need_info', {socket_id: socket.id});
 
     socket.on('my_info', (info) => {
-        console.log(info);
         socket.user_id = info.user_id;
         socket.nickname = info.username;
         socket.group = info.group;
@@ -66,49 +77,62 @@ io.sockets.on('connection', (socket) => {
             socket.join('room_' + info.user_id);
             socket.room = 'room_' + info.user_id;
         } else {
+            socket.join('ajent_room');
             getUnAcceptedList((data) => {
                 console.log(data);
-                socket.emit('unaccepted list', data);
+                io.sockets.in('ajent_room').emit('pending_list', data);
             });
+
+            getAcceptedList((data) => {
+                console.log( data );
+                socket.emit('joined_list', data);
+            }, socket);
         }
-        // console.log(socket);
+        console.log('my info set');
     });
 
     socket.on('send_message', (data) => {
-        var message = {user_id: socket.user_id, message: data.msg, receiver_id: parseInt(data.receiver), status:0}
-
         console.log(data);
-        
-        //save to database
-        con.query('INSERT INTO mmcm_chats SET ?', message, (err, rows) => {
-            if(err == null ){
-                console.log('new message sent 0');
-                const resp = {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id};
-                io.sockets.in('room_' + socket.user_id).emit('chat_message', resp);
-                // io.sockets.emit('new_message_' + message.user_id, resp);
-                // io.sockets.emit('reply_message_' + message.receiver_id, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
-            } else {
-                console.log('new message sent err' + err);
-                socket.emit('bug reporting', err);
-            }
-        });
-        if( message.receiver_id == 0 ) {
+        if( data.receiver_id == 0 ) {
+            //save to database
+            con.query('INSERT INTO live_supports SET ?', {user_id: socket.user_id, message: data.msg, ajent_id: 0}, (err, rows) => {
+                if(err != null ) {
+                    console.log('new message sent err' + err);
+                    // socket.emit('bug reporting', err);
+                }
+            });
+
+            //update all pending list
             getUnAcceptedList((data) => {
-                io.sockets.emit('unaccepted list', data);
+                io.sockets.in('ajent_room').emit('pending_list', data);
+            });
+        } else {
+            con.query('INSERT INTO live_support_replies SET ?', {live_support_id: 1, sender_id: socket.user_id, message: data.msg, receiver_id: data.receiver}, (err, rows) => {
+                if(err != null ) {
+                    console.log('new message sent err' + err);
+                    // socket.emit('bug reporting', err);
+                }
             });
         }
+
+        //Send message to socket
+        const resp = {name: socket.nickname, msg: data.msg, sender: socket.user_id, receiver: data.receiver_id, socket_id: socket.id};
+        io.sockets.emit('chat_message', resp);
+
+        // io.sockets.emit('new_message_' + message.user_id, resp);
+        // io.sockets.emit('reply_message_' + message.receiver_id, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
     });
 
     socket.on('reply_message', (data) => {
-        var message = {user_id: socket.user_id, message: data.msg, receiver_id: parseInt(data.receiver)};
+        var message = {user_id: parseInt(data.sender), message: data.msg, receiver_id: parseInt(data.receiver)};
         //save to database
         con.query('INSERT INTO mmcm_chats SET ?', message, (err, rows) => {
             if(err == null ){
                 console.log('new message sent 0');
                 var today = new Date();
                 var time = today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();
-                const resp = {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id, time:time };
-                io.sockets.in('room_' + data.receiver).emit('chat_message', resp);
+                const resp = {name: socket.nickname, msg: data.msg, sender: message.receiver_id, receiver: message.user_id, socket_id: socket.id, time:time };
+                io.sockets.emit('chat_message', resp);
                 // io.sockets.emit('new_message_' + message.user_id, resp);
                 // io.sockets.emit('reply_message_' + message.receiver_id, {name: socket.nickname, msg: data.msg, id: message.user_id, receiver: message.receiver_id, socket_id: socket.id});
             } else {
@@ -116,7 +140,6 @@ io.sockets.on('connection', (socket) => {
                 socket.emit('bug reporting', err);
             }
         });
-        console.log('this is reply message');
     });
 
     socket.on('join_chat', (data) => {
@@ -127,7 +150,7 @@ io.sockets.on('connection', (socket) => {
         socket.room = 'room_' + data.id;
         let message = {receiver_id: socket.user_id}
         // io.broadcust.to(io.sockets.sockets[id]).emit('agent_join', {agent_id: socket.user_id, agent_name: socket.nickname});
-        con.query('UPDATE mmcm_chats SET receiver_id=' + socket.user_id + ' WHERE user_id=' + id + ' AND receiver_id=0', (err, rows) => {
+        con.query('UPDATE live_supports SET agent_id=' + socket.user_id + ', status=1 WHERE id=' + id, (err, rows) => {
             if(err == null ) {
                 console.log('Support agent join to chat');
                 io.sockets.in('room_' + data.id).emit('agent_join', {agent_id: socket.user_id, agent_name: socket.nickname, time: rows.sending_at});
@@ -135,11 +158,11 @@ io.sockets.on('connection', (socket) => {
                 const resp = {name: socket.nickname, msg: msg, id: socket.user_id, receiver: socket.user_id, socket_id: socket.id, time:time };
                 io.sockets.in('room_' + data.receiver).emit('chat_message', resp);
                 getUnAcceptedList((data) => {
-                    io.sockets.emit('unaccepted list', data);
+                    io.sockets.emit('pending_list', data);
                 });
             } else {
                 console.log('agent join error - ' + err);
-                socket.emit('bug reporting', err);
+                // socket.emit('bug reporting', err);
             }
         });
     });
@@ -201,22 +224,32 @@ io.sockets.on('connection', (socket) => {
         //     }
         // }
 
+        // con.end(function (err) {
+        //   console.log('connection disconnected!');
+        // });
+
         io.sockets.in(socket.room).emit('user_left', { name: socket.nickname, id: socket.user_id });
     });
 });
 
 function getUnAcceptedList(callback) {
     con.query(
-      "SELECT mmcm_chats.id, mmcm_chats.message, mmcm_chats.sending_at, mmcm_chats.user_id as sender_id, S.name_bn as sender_name FROM mmcm_chats LEFT JOIN users as S ON mmcm_chats.user_id=S.id WHERE mmcm_chats.receiver_id='0' GROUP BY mmcm_chats.user_id LIMIT 10",
+      "SELECT live_supports.*, users.name_bn as sender_name FROM live_supports LEFT JOIN users on live_supports.user_id=users.id WHERE agent_id=0",
       (err, rows) => {
-        console.log( rows );
             if( err == null ) {
-                let data = rows;
-                console.log(data);
-                // socket.emit('unaccepted list', data);
-                callback(data);
-            } else {
-                // socket.emit('bug reporting', err);
+                console.log( rows );
+                callback(rows);
+            }
+        });
+}
+
+function getAcceptedList( callback, socket ) {
+    con.query(
+      "SELECT live_supports.*, users.name_bn as sender_name FROM live_supports LEFT JOIN users on live_supports.user_id=users.id WHERE status=1 AND agent_id="+ socket.user_id,
+      (err, rows) => {
+            if( err == null ) {
+                console.log( rows );
+                callback(rows);
             }
         });
 }
